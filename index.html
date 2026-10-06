@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serveur Centralisé Monitoring & Telegram Pont</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --blue: #38bdf8;
+            --purple: #c084fc;
+            --amber: #fbbf24;
+            --green: #4ade80;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 2rem; min-height: 100vh; }
+
+        header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        h1 { font-size: 1.5rem; color: var(--blue); }
+
+        .bot-status {
+            background: rgba(74, 222, 128, 0.1);
+            color: var(--green);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1.5rem; }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+        }
+
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        .hostname { font-size: 1.2rem; font-weight: bold; }
+        .meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; display: flex; justify-content: space-between; }
+        .ip-badge { background: #0f172a; color: var(--blue); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+
+        .metric { margin-bottom: 0.75rem; }
+        .metric-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
+        .progress-bar { background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; transition: width 0.4s ease; }
+
+        .apps-box { margin-top: 1rem; }
+        .apps-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+        .apps-list { max-height: 100px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 0.75rem; color: var(--muted); }
+
+        .status-message { grid-column: 1/-1; text-align: center; color: var(--muted); padding: 4rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>☁️ Centralisation Monitoring & Pont Telegram</h1>
+        <div class="bot-status">
+            <span class="dot"></span>
+            <span>Relais Telegram Bot Actif</span>
+        </div>
+    </header>
+
+    <main id="grid" class="grid">
+        <div class="status-message">Chargement des machines depuis GitHub...</div>
+    </main>
+
+    <script>
+        const TELEGRAM_TOKEN = "8857271057:AAG9ggVUzKfkflBVRKXCoMhoAAcl4O03O9Y";
+        const GITHUB_REPO = "thomasshadowpc-cmd/monitor";
+        
+        let telegramOffset = 0;
+        let devicesData = {};
+
+        // 1. Récupération des métriques depuis le dépôt GitHub
+        async function fetchGitHubData() {
+            try {
+                const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/data?t=${Date.now()}`);
+                if (!res.ok) return;
+
+                const files = await res.json();
+                const jsonFiles = files.filter(f => f.name.endsWith('.json'));
+
+                for (const f of jsonFiles) {
+                    const dataRes = await fetch(`${f.download_url}?t=${Date.now()}`);
+                    if (dataRes.ok) {
+                        const dev = await dataRes.json();
+                        devicesData[dev.hostname] = dev;
+                    }
+                }
+                renderDashboard();
+            } catch (e) {
+                console.error("Erreur GitHub:", e);
+            }
+        }
+
+        // 2. Affichage sur la page web HTML
+        function renderDashboard() {
+            const grid = document.getElementById('grid');
+            const list = Object.values(devicesData);
+
+            if (list.length === 0) {
+                grid.innerHTML = '<div class="status-message">Aucun PC connecté (dossier data/ vide).</div>';
+                return;
+            }
+
+            grid.innerHTML = '';
+            list.forEach(dev => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                const gpuUsage = dev.
