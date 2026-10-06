@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Monitoring Cloud - GitHub Relay</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --blue: #38bdf8;
+            --purple: #c084fc;
+            --amber: #fbbf24;
+            --green: #4ade80;
+            --red: #f87171;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 2rem; min-height: 100vh; }
+
+        header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        h1 { font-size: 1.6rem; color: var(--blue); display: flex; align-items: center; gap: 10px; }
+
+        .btn-refresh {
+            background: var(--blue);
+            color: #0f172a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-refresh:hover { opacity: 0.9; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1.5rem; }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: var(--blue); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .hostname { font-size: 1.2rem; font-weight: bold; }
+        .badge {
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--green);
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+
+        .meta {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ip-badge {
+            background: #0f172a;
+            color: var(--blue);
+            font-size: 0.8rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .metric { margin-bottom: 0.75rem; }
+        .metric-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
+        .progress-bar { background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+        .progress-fill { height: 100%; transition: width 0.4s ease; }
+
+        .apps-box { margin-top: 1rem; }
+        .apps-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+        .apps-list {
+            max-height: 110px;
+            overflow-y: auto;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+        .app-item { padding: 3px 0; border-bottom: 1px solid #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .app-item:last-child { border-bottom: none; }
+
+        .card-footer { margin-top: 0.75rem; font-size: 0.75rem; color: var(--muted); text-align: right; }
+        .status-message { grid-column: 1/-1; text-align: center; color: var(--muted); padding: 4rem; font-size: 1rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>☁️ Monitoring Cloud (GitHub Relay)</h1>
+        <button class="btn-refresh" onclick="fetchDataFromGitHub()">🔄 Rafraîchir</button>
+    </header>
+
+    <main id="grid" class="grid">
+        <div class="status-message">Chargement des données depuis GitHub...</div>
+    </main>
+
+    <script>
+        const REPO = "thomasshadowpc-cmd/monitor";
+        const devices = {};
+
+        async function fetchDataFromGitHub() {
+            const grid = document.getElementById('grid');
+            try {
+                // Interroge le dossier /data/ du dépôt GitHub avec un timestamp anti-cache
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/data?t=${Date.now()}`);
+                
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        grid.innerHTML = '<div class="status-message">Aucune machine connectée pour le moment (le dossier <code>data/</code> est vide).</div>';
+                    } else {
+                        grid.innerHTML = `<div class="status-message">Erreur API GitHub (${res.status}). Limite de requêtes atteinte ou dépôt privé.</div>`;
+                    }
+                    return;
+                }
+
+                const files = await res.json();
+                const jsonFiles = files.filter(f => f.name.endsWith('.json'));
+
+                if (jsonFiles.length === 0) {
+                    grid.innerHTML = '<div class="status-message">Aucun rapport JSON trouvé dans le dossier <code>data/</code>.</div>';
+                    return;
+                }
+
+                // Récupération en parallèle de tous les fichiers clients
+                await Promise.all(jsonFiles.map(async (file) => {
+                    const fileRes = await fetch(`${file.download_url}?t=${Date.now()}`);
+                    if (fileRes.ok) {
+                        const data = await fileRes.json();
+                        devices[data.hostname] = data;
+                    }
+                }));
+
+                render();
+            } catch (e) {
+                console.error("Erreur de connexion GitHub :", e);
+                grid.innerHTML = '<div class="status-message">Erreur de connexion lors de la récupération des métriques.</div>';
+            }
+        }
+
+        function render() {
+            const grid = document.getElementById('grid');
+            const list = Object.values(devices);
+
+            if (list.length === 0) return;
+
+            grid.innerHTML = '';
+            list.forEach(dev => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                const gpuUsageText = (dev.gpu && dev.gpu.usage !== null && dev.gpu.usage !== undefined) 
+                    ? `${dev.gpu.usage}%` 
+                    : 'N/A';
+                const gpuUsageVal = (dev.gpu && dev.gpu.usage) ? dev.gpu.usage : 0;
+                const appsCount = dev.apps ? dev.apps.length : 0;
+                const appsListHtml = dev.apps && dev.apps.length > 0 
+                    ? dev.apps.map(a => `<div class="app-item">• ${a}</div>`).join('')
+                    : '<div class="app-item">Aucun programme détecté</div>';
+
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span class="hostname">💻 ${dev.hostname}</span>
+                        <span class="badge">● Distant</span>
+                    </div>
+
+                    <div class="meta">
+                        <span>🪟 ${dev.os || 'Windows'}</span>
+                        <span class="ip-badge">WLAN: ${dev.ip || 'N/A'}</span>
+                    </div>
+
+                    <div class="metric">
+                        <div class="metric-header">
+                            <span>CPU (${dev.cpu ? dev.cpu.name : 'Inconnu'})</span>
+                            <span>${dev.cpu ? dev.cpu.usage : 0}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${dev.cpu ? dev.cpu.usage : 0}%; background: var(--blue);"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric">
+                        <div class="metric-header">
+                            <span>RAM (${dev.ram ? dev.ram.used_gb : 0}/${dev.ram ? dev.ram.total_gb : 0} GB)</span>
+                            <span>${dev.ram ? dev.ram.usage : 0}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${dev.ram ? dev.ram.usage : 0}%; background: var(--purple);"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric">
+                        <div class="metric-header">
+                            <span>GPU (${dev.gpu ? dev.gpu.name : 'N/A'})</span>
+                            <span>${gpuUsageText}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${gpuUsageVal}%; background: var(--amber);"></div>
+                        </div>
+                    </div>
+
+                    <div class="apps-box">
+                        <div class="apps-title">Programmes installés (${appsCount})</div>
+                        <div class="apps-list">
+                            ${appsListHtml}
+                        </div>
+                    </div>
+
+                    <div class="card-footer">Dernière synchro : ${dev.last_seen || 'Inconnue'}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // Chargement automatique et rafraîchissement toutes les 15 secondes
+        window.onload = () => {
+            fetchDataFromGitHub();
+            setInterval(fetchDataFromGitHub, 15000);
+        };
+    </script>
+</body>
+</html>
