@@ -2,34 +2,33 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Monitoring & Telegram (Sans GitHub)</title>
+    <title>Monitoring & Telegram Direct</title>
     <style>
-        body { background: #0f172a; color: #f8fafc; font-family: system-ui; padding: 2rem; }
+        body { background: #0f172a; color: #f8fafc; font-family: system-ui, sans-serif; padding: 2rem; }
         .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #334155; }
-        .code { font-family: monospace; color: #38bdf8; }
+        .ip { font-family: monospace; color: #38bdf8; }
+        .badge { background: #166534; color: #4ade80; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; }
     </style>
 </head>
 <body>
     <h1>🖥️ Dashboard Monitoring Direct</h1>
-    <p>Statut Telegram : <b style="color: #4ade80;">Actif & Écoute</b></p>
+    <p>Statut du Bot Telegram : <span class="badge">Écoute active sur Telegram</span></p>
     <hr style="margin: 1.5rem 0; border-color: #334155;">
 
     <div id="devices">Chargement des données...</div>
 
     <script>
         const TELEGRAM_TOKEN = "8857271057:AAG9ggVUzKfkflBVRKXCoMhoAAcl4O03O9Y";
-        const BIN_ID = "65a12345abcde12345678901";
-        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+        const DB_URL = "https://api.npoint.io/8857271057_monitoring_data";
 
         let offset = 0;
         let localData = {};
 
         async function loadMetrics() {
             try {
-                const res = await fetch(API_URL);
+                const res = await fetch(DB_URL + `?t=${Date.now()}`);
                 if (res.ok) {
-                    const json = await res.json();
-                    localData = json.record || {};
+                    localData = await res.json();
                     renderUI();
                 }
             } catch (e) { console.error(e); }
@@ -39,14 +38,14 @@
             const container = document.getElementById('devices');
             const list = Object.values(localData);
             if (list.length === 0) {
-                container.innerHTML = "Aucune machine enregistrée.";
+                container.innerHTML = "Aucune machine détectée.";
                 return;
             }
             container.innerHTML = list.map(d => `
                 <div class="card">
                     <h3>💻 ${d.hostname}</h3>
-                    <p>IP: <span class="code">${d.ip}</span> | OS: ${d.os} | Vu à: ${d.last_seen}</p>
-                    <p>CPU: ${d.cpu.usage}% | RAM: ${d.ram.used_gb}/${d.ram.total_gb} GB (${d.ram.usage}%)</p>
+                    <p>IP: <span class="ip">${d.ip}</span> | OS: ${d.os} | Synchro: ${d.last_seen}</p>
+                    <p>⚙️ CPU: ${d.cpu.usage}% | 🧠 RAM: ${d.ram.used_gb}/${d.ram.total_gb} GB (${d.ram.usage}%)</p>
                 </div>
             `).join('');
         }
@@ -76,10 +75,10 @@
                                 list.forEach(d => {
                                     msg += `• <b>${d.hostname}</b>\n  └ IP : <code>${d.ip}</code> | Vu : ${d.last_seen}\n\n`;
                                 });
-                                await sendTelegram(chatId, msg || "Aucun PC.");
+                                await sendTelegram(chatId, msg || "Aucun PC connecté.");
                             } else if (cmd === 'spec' || cmd === '/spec') {
                                 for (const d of list) {
-                                    const apps = d.apps ? d.apps.slice(0, 10).join(', ') + '...' : 'Aucun';
+                                    const apps = d.apps ? (d.apps.length > 10 ? d.apps.slice(0, 10).join(', ') + '...' : d.apps.join(', ')) : 'Aucun';
                                     const card = `🖥️ <b>${d.hostname}</b>\n🌐 IP: <code>${d.ip}</code>\n⚙️ CPU: ${d.cpu.name} (${d.cpu.usage}%)\n🧠 RAM: ${d.ram.used_gb}/${d.ram.total_gb} GB (${d.ram.usage}%)\n📦 Apps: <i>${apps}</i>`;
                                     await sendTelegram(chatId, card);
                                 }
