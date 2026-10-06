@@ -2,133 +2,102 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serveur Centralisé Monitoring & Telegram Pont</title>
+    <title>Dashboard Monitoring & Telegram (Sans GitHub)</title>
     <style>
-        :root {
-            --bg: #0f172a;
-            --card: #1e293b;
-            --border: #334155;
-            --text: #f8fafc;
-            --muted: #94a3b8;
-            --blue: #38bdf8;
-            --purple: #c084fc;
-            --amber: #fbbf24;
-            --green: #4ade80;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-        body { background-color: var(--bg); color: var(--text); padding: 2rem; min-height: 100vh; }
-
-        header {
-            margin-bottom: 2rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-
-        h1 { font-size: 1.5rem; color: var(--blue); }
-
-        .bot-status {
-            background: rgba(74, 222, 128, 0.1);
-            color: var(--green);
-            border: 1px solid rgba(74, 222, 128, 0.3);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
-
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1.5rem; }
-
-        .card {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 1.25rem;
-            border: 1px solid var(--border);
-        }
-
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-        .hostname { font-size: 1.2rem; font-weight: bold; }
-        .meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; display: flex; justify-content: space-between; }
-        .ip-badge { background: #0f172a; color: var(--blue); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
-
-        .metric { margin-bottom: 0.75rem; }
-        .metric-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
-        .progress-bar { background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; }
-        .progress-fill { height: 100%; transition: width 0.4s ease; }
-
-        .apps-box { margin-top: 1rem; }
-        .apps-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
-        .apps-list { max-height: 100px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 0.75rem; color: var(--muted); }
-
-        .status-message { grid-column: 1/-1; text-align: center; color: var(--muted); padding: 4rem; }
+        body { background: #0f172a; color: #f8fafc; font-family: system-ui; padding: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #334155; }
+        .code { font-family: monospace; color: #38bdf8; }
     </style>
 </head>
 <body>
+    <h1>🖥️ Dashboard Monitoring Direct</h1>
+    <p>Statut Telegram : <b style="color: #4ade80;">Actif & Écoute</b></p>
+    <hr style="margin: 1.5rem 0; border-color: #334155;">
 
-    <header>
-        <h1>☁️ Centralisation Monitoring & Pont Telegram</h1>
-        <div class="bot-status">
-            <span class="dot"></span>
-            <span>Relais Telegram Bot Actif</span>
-        </div>
-    </header>
-
-    <main id="grid" class="grid">
-        <div class="status-message">Chargement des machines depuis GitHub...</div>
-    </main>
+    <div id="devices">Chargement des données...</div>
 
     <script>
         const TELEGRAM_TOKEN = "8857271057:AAG9ggVUzKfkflBVRKXCoMhoAAcl4O03O9Y";
-        const GITHUB_REPO = "thomasshadowpc-cmd/monitor";
-        
-        let telegramOffset = 0;
-        let devicesData = {};
+        const BIN_ID = "65a12345abcde12345678901";
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
-        // 1. Récupération des métriques depuis le dépôt GitHub
-        async function fetchGitHubData() {
+        let offset = 0;
+        let localData = {};
+
+        async function loadMetrics() {
             try {
-                const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/data?t=${Date.now()}`);
-                if (!res.ok) return;
-
-                const files = await res.json();
-                const jsonFiles = files.filter(f => f.name.endsWith('.json'));
-
-                for (const f of jsonFiles) {
-                    const dataRes = await fetch(`${f.download_url}?t=${Date.now()}`);
-                    if (dataRes.ok) {
-                        const dev = await dataRes.json();
-                        devicesData[dev.hostname] = dev;
-                    }
+                const res = await fetch(API_URL);
+                if (res.ok) {
+                    const json = await res.json();
+                    localData = json.record || {};
+                    renderUI();
                 }
-                renderDashboard();
-            } catch (e) {
-                console.error("Erreur GitHub:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
-        // 2. Affichage sur la page web HTML
-        function renderDashboard() {
-            const grid = document.getElementById('grid');
-            const list = Object.values(devicesData);
-
+        function renderUI() {
+            const container = document.getElementById('devices');
+            const list = Object.values(localData);
             if (list.length === 0) {
-                grid.innerHTML = '<div class="status-message">Aucun PC connecté (dossier data/ vide).</div>';
+                container.innerHTML = "Aucune machine enregistrée.";
                 return;
             }
+            container.innerHTML = list.map(d => `
+                <div class="card">
+                    <h3>💻 ${d.hostname}</h3>
+                    <p>IP: <span class="code">${d.ip}</span> | OS: ${d.os} | Vu à: ${d.last_seen}</p>
+                    <p>CPU: ${d.cpu.usage}% | RAM: ${d.ram.used_gb}/${d.ram.total_gb} GB (${d.ram.usage}%)</p>
+                </div>
+            `).join('');
+        }
 
-            grid.innerHTML = '';
-            list.forEach(dev => {
-                const card = document.createElement('div');
-                card.className = 'card';
-                const gpuUsage = dev.
+        async function sendTelegram(chatId, text) {
+            await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' })
+            });
+        }
+
+        async function processTelegram() {
+            try {
+                const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?offset=${offset}&timeout=5`);
+                if (res.ok) {
+                    const data = await res.json();
+                    for (const u of data.result) {
+                        offset = u.update_id + 1;
+                        if (u.message && u.message.text) {
+                            const cmd = u.message.text.trim().toLowerCase();
+                            const chatId = u.message.chat.id;
+                            const list = Object.values(localData);
+
+                            if (cmd === 'user' || cmd === '/user') {
+                                let msg = `💻 <b>PC CONNECTÉS (${list.length}) :</b>\n\n`;
+                                list.forEach(d => {
+                                    msg += `• <b>${d.hostname}</b>\n  └ IP : <code>${d.ip}</code> | Vu : ${d.last_seen}\n\n`;
+                                });
+                                await sendTelegram(chatId, msg || "Aucun PC.");
+                            } else if (cmd === 'spec' || cmd === '/spec') {
+                                for (const d of list) {
+                                    const apps = d.apps ? d.apps.slice(0, 10).join(', ') + '...' : 'Aucun';
+                                    const card = `🖥️ <b>${d.hostname}</b>\n🌐 IP: <code>${d.ip}</code>\n⚙️ CPU: ${d.cpu.name} (${d.cpu.usage}%)\n🧠 RAM: ${d.ram.used_gb}/${d.ram.total_gb} GB (${d.ram.usage}%)\n📦 Apps: <i>${apps}</i>`;
+                                    await sendTelegram(chatId, card);
+                                }
+                            } else {
+                                await sendTelegram(chatId, "<b>Commandes :</b>\n👉 <code>user</code>\n👉 <code>spec</code>");
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+            setTimeout(processTelegram, 2000);
+        }
+
+        window.onload = () => {
+            loadMetrics();
+            setInterval(loadMetrics, 10000);
+            processTelegram();
+        };
+    </script>
+</body>
+</html>
